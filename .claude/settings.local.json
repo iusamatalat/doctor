@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Recurse \"d:\\\\Hackathon\" | Where-Object { !$_.PSIsContainer } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"d:\\\\Hackathon\\\\\", \"\"\\) })"
+    ]
+  }
+}
