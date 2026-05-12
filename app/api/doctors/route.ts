@@ -1,19 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Doctor from "@/lib/models/Doctor";
+import { listFallbackDoctors, upsertFallbackDoctor } from "@/lib/fallbackStore";
+
+function toResponseDoctor(d: any) {
+  return { ...d, id: String(d._id) };
+}
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const query = searchParams.get("query") || "";
+  const specialization = searchParams.get("specialization") || "";
+  const city = searchParams.get("city") || "";
+  const type = searchParams.get("type") || "";
+  const sort = searchParams.get("sort") || "rating";
+
+  const sortKey =
+    sort === "experience" ? "experience" : sort === "fee" ? "feeOnline" : "rating";
+  const sortDirection = sort === "fee" ? 1 : -1;
+
+  // Prefer MongoDB, fallback to local file store if DB is unavailable.
   try {
     await connectDB();
 
-    const { searchParams } = new URL(req.url);
-    const query = searchParams.get("query") || "";
-    const specialization = searchParams.get("specialization") || "";
-    const city = searchParams.get("city") || "";
-    const type = searchParams.get("type") || "";
-    const sort = searchParams.get("sort") || "rating";
-
-    // Build filter
     const filter: Record<string, unknown> = {};
 
     if (query) {
@@ -36,38 +45,66 @@ export async function GET(req: NextRequest) {
       filter.consultationType = { $in: ["physical", "both"] };
     }
 
-    // Sort
-    const sortMap: Record<string, Record<string, number>> = {
-      rating: { rating: -1 },
-      experience: { experience: -1 },
-      fee: { feeOnline: 1 },
-    };
-    const sortObj = sortMap[sort] || { rating: -1 };
+    const docs = await Doctor.find(filter)
+      .sort({ [sortKey]: sortDirection })
+      .lean();
 
-    const docs = await Doctor.find(filter).sort(sortObj).lean();
-
-    // Normalize: add id field
-    const doctors = docs.map((d: any) => ({ ...d, id: String(d._id) }));
-
-    return NextResponse.json(doctors);
+    return NextResponse.json(docs.map(toResponseDoctor));
   } catch (err) {
-    console.error("[GET /api/doctors]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.warn("[GET /api/doctors] Mongo unavailable, using fallback store:", err);
+
+    const q = query.trim().toLowerCase();
+    let docs = await listFallbackDoctors();
+
+    if (q) {
+      docs = docs.filter((d) =>
+        [d.name, d.specialization, d.city, d.location].some((field) =>
+          field.toLowerCase().includes(q)
+        )
+      );
+    }
+    if (specialization && specialization !== "All Specializations") {
+      const needle = specialization.toLowerCase();
+      docs = docs.filter((d) => d.specialization.toLowerCase().includes(needle));
+    }
+    if (city && city !== "All Cities") {
+      docs = docs.filter((d) => d.city === city);
+    }
+    if (type === "Online") {
+      docs = docs.filter(
+        (d) => d.consultationType === "online" || d.consultationType === "both"
+      );
+    } else if (type === "Physical") {
+      docs = docs.filter(
+        (d) => d.consultationType === "physical" || d.consultationType === "both"
+      );
+    }
+
+    docs.sort((a: any, b: any) => {
+      const av = Number(a[sortKey] ?? 0);
+      const bv = Number(b[sortKey] ?? 0);
+      return sortDirection === 1 ? av - bv : bv - av;
+    });
+
+    return NextResponse.json(docs.map(toResponseDoctor));
   }
 }
 
 export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const newId = body._id || body.id || String(Date.now());
+
   try {
     await connectDB();
-    const body = await req.json();
-
-    // Generate a simple numeric string ID if not provided
-    const newId = body._id || String(Date.now());
     const doctor = await Doctor.create({ ...body, _id: newId });
 
     return NextResponse.json(doctor.toJSON(), { status: 201 });
   } catch (err) {
-    console.error("[POST /api/doctors]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.warn("[POST /api/doctors] Mongo unavailable, using fallback store:", err);
+    const created = await upsertFallbackDoctor(String(newId), {
+      ...body,
+      _id: String(newId),
+    });
+    return NextResponse.json(toResponseDoctor(created), { status: 201 });
   }
 }

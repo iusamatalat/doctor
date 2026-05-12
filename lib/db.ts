@@ -1,8 +1,6 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
-
-if (!MONGODB_URI) throw new Error("MONGODB_URI is not set in .env.local");
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Reuse connection across hot-reloads in Next.js dev mode
 const cache = global as typeof global & {
@@ -16,6 +14,10 @@ if (!cache._mongoConn) {
 }
 
 export async function connectDB(): Promise<typeof mongoose> {
+  if (!MONGODB_URI) {
+    throw new Error("MONGODB_URI is not set in .env.local");
+  }
+
   if (cache._mongoConn) return cache._mongoConn;
 
   if (!cache._mongoPromise) {

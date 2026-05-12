@@ -1,13 +1,11 @@
 {
+  "/api/doctors/route": "app/api/doctors/route.js",
+  "/api/chat/route": "app/api/chat/route.js",
   "/page": "app/page.js",
   "/doctor/[id]/page": "app/doctor/[id]/page.js",
-  "/search/page": "app/search/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/api/chat/route": "app/api/chat/route.js",
   "/api/doctors/[id]/route": "app/api/doctors/[id]/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
   "/api/appointments/route": "app/api/appointments/route.js",
-  "/api/doctors/route": "app/api/doctors/route.js",
-  "/api/match/route": "app/api/match/route.js",
-  "/api/seed/route": "app/api/seed/route.js",
+  "/search/page": "app/search/page.js",
   "/add-doctor/page": "app/add-doctor/page.js"
 }

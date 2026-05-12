@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Doctor from "@/lib/models/Doctor";
 import { doctors } from "@/lib/mockData";
+import { listFallbackDoctors, upsertFallbackDoctorsFromMock } from "@/lib/fallbackStore";
 
 export async function POST() {
   try {
@@ -47,8 +48,13 @@ export async function POST() {
       count: results.length,
     });
   } catch (err) {
-    console.error("[POST /api/seed]", err);
-    return NextResponse.json({ error: "Seed failed", detail: String(err) }, { status: 500 });
+    console.warn("[POST /api/seed] Mongo unavailable, using fallback store:", err);
+    const count = await upsertFallbackDoctorsFromMock();
+    return NextResponse.json({
+      message: `Seeded ${count} doctors into fallback store.`,
+      count,
+      fallback: true,
+    });
   }
 }
 
@@ -59,6 +65,8 @@ export async function GET() {
     const count = await Doctor.countDocuments();
     return NextResponse.json({ doctorsInDB: count });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.warn("[GET /api/seed] Mongo unavailable, using fallback store:", err);
+    const docs = await listFallbackDoctors();
+    return NextResponse.json({ doctorsInDB: docs.length, fallback: true });
   }
 }

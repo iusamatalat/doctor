@@ -1,28 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Doctor from "@/lib/models/Doctor";
+import { getFallbackDoctorById, upsertFallbackDoctor } from "@/lib/fallbackStore";
+
+function toResponseDoctor(d: any) {
+  return { ...d, id: String(d._id) };
+}
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
     const doc = await Doctor.findById(params.id).lean() as any;
     if (!doc) return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
-    return NextResponse.json({ ...doc, id: String(doc._id) });
+    return NextResponse.json(toResponseDoctor(doc));
   } catch (err) {
-    console.error("[GET /api/doctors/[id]]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.warn("[GET /api/doctors/[id]] Mongo unavailable, using fallback store:", err);
+    const doc = await getFallbackDoctorById(params.id);
+    if (!doc) return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+    return NextResponse.json(toResponseDoctor(doc));
   }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const body = await req.json();
+
+  // Never allow overwriting _id
+  delete body._id;
+  delete body.id;
+
   try {
     await connectDB();
-    const body = await req.json();
-
-    // Never allow overwriting _id
-    delete body._id;
-    delete body.id;
-
     const updated = await Doctor.findByIdAndUpdate(
       params.id,
       { $set: body },
@@ -31,9 +38,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     if (!updated) return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
 
-    return NextResponse.json({ ...updated, id: String(updated._id) });
+    return NextResponse.json(toResponseDoctor(updated));
   } catch (err) {
-    console.error("[PUT /api/doctors/[id]]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.warn("[PUT /api/doctors/[id]] Mongo unavailable, using fallback store:", err);
+    const existing = await getFallbackDoctorById(params.id);
+    if (!existing) return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+
+    const updated = await upsertFallbackDoctor(params.id, { ...existing, ...body });
+    return NextResponse.json(toResponseDoctor(updated));
   }
 }

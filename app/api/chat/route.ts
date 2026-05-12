@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { groqChat, GroqMessage } from "@/lib/groq";
 
 const FLAG = "||DATA_COMPLETE||";
+const CHAT_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+
+async function chatWithFallbackModels(messages: GroqMessage[]): Promise<string> {
+  let lastError: unknown = null;
+
+  for (const model of CHAT_MODELS) {
+    try {
+      return await groqChat({
+        model,
+        temperature: 0.7,
+        max_tokens: 512,
+        messages,
+      });
+    } catch (err) {
+      lastError = err;
+      console.warn(`[POST /api/chat] model failed: ${model}`, err);
+    }
+  }
+
+  throw lastError ?? new Error("All Groq chat models failed");
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,12 +49,7 @@ export async function POST(req: NextRequest) {
         .map((m: GroqMessage) => ({ role: m.role, content: String(m.content) })),
     ];
 
-    const raw = await groqChat({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.7,
-      max_tokens: 512,
-      messages: groqMessages,
-    });
+    const raw = await chatWithFallbackModels(groqMessages);
 
     const isDataCollected = raw.includes(FLAG);
     const reply = raw.replaceAll(FLAG, "").trim();

@@ -13,11 +13,19 @@ export interface GroqRequestOptions {
 }
 
 export async function groqChat(options: GroqRequestOptions): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("GROQ_API_KEY is missing");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+
   const res = await fetch(GROQ_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: options.model,
@@ -25,7 +33,8 @@ export async function groqChat(options: GroqRequestOptions): Promise<string> {
       temperature: options.temperature ?? 0.7,
       max_tokens: options.max_tokens ?? 512,
     }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
 
   if (!res.ok) {
     const body = await res.text();
